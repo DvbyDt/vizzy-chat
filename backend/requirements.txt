@@ -20,6 +20,9 @@ numpy==1.24.3
 # PyTorch (CPU version for free tier)
 torch==2.1.0
 
+# Hugging Face Hub - Must be older version with cached_download
+huggingface-hub==0.16.4
+
 # ML/AI - Stable tested versions that work together
 transformers==4.30.0
 diffusers==0.21.0
