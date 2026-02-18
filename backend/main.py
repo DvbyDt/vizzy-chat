@@ -2,10 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+# LAZY IMPORT: from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 from io import BytesIO
 import base64
-import torch
+# LAZY IMPORT: import torch
 import logging
 import time
 import random
@@ -13,7 +13,7 @@ import re
 from typing import List, Optional, Dict, Any
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from PIL import Image
+# LAZY IMPORT: from PIL import Image
 
 # Import your custom logic
 from memory import update_memory, get_context, get_user_preferences
@@ -126,6 +126,8 @@ def extract_slogan(message):
 
 def encode_images(images):
     """Encode PIL images to base64 with optimization"""
+    from PIL import Image
+    
     encoded = []
     for img in images:
         try:
@@ -767,18 +769,30 @@ async def generate_content(req):
 class ModelManager:
     def __init__(self):
         self.pipe = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = None  # Will be set on first use
         self.loaded = False
         self.executor = ThreadPoolExecutor(max_workers=2)
+        
+    def _get_device(self):
+        """Lazy determine device - only called when first needed"""
+        if self.device is None:
+            import torch
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        return self.device
         
     def load_model(self):
         """Lazy load model to improve startup time"""
         if not self.loaded:
             try:
-                logger.info(f"Loading Stable Diffusion on {self.device}...")
+                # Import heavy dependencies only when needed
+                from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+                import torch
+                
+                device = self._get_device()
+                logger.info(f"Loading Stable Diffusion on {device}...")
                 self.pipe = StableDiffusionPipeline.from_pretrained(
                     "runwayml/stable-diffusion-v1-5",
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
                     safety_checker=None,
                     requires_safety_checker=False
                 )
@@ -787,19 +801,19 @@ class ModelManager:
                     self.pipe.scheduler.config
                 )
                 
-                self.pipe = self.pipe.to(self.device)
+                self.pipe = self.pipe.to(device)
                 
                 # Enable optimizations for both GPU and CPU
                 self.pipe.enable_attention_slicing()
                 
                 # CPU-specific optimizations
-                if self.device == "cpu":
+                if device == "cpu":
                     logger.info("Running on CPU - generation will take 15-30s per image")
                     # Reduce memory usage on CPU
                     self.pipe.enable_vae_slicing()
                     
                 self.loaded = True
-                logger.info(f"Model loaded successfully on {self.device}")
+                logger.info(f"Model loaded successfully on {device}")
             except Exception as e:
                 logger.error(f"Failed to load model: {e}")
                 raise
