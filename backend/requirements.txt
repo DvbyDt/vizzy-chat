@@ -1,0 +1,36 @@
+# fastapi
+# uvicorn
+# torch
+# diffusers
+# transformers
+# accelerate
+# pillow
+# sentencepiece
+
+
+# Core
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.4.2
+python-multipart==0.0.6
+
+# NumPy (specific version for compatibility)
+numpy==1.24.3
+
+# Hugging Face ecosystem (in correct order)
+huggingface-hub==0.23.0
+tokenizers==0.15.0
+safetensors==0.4.2
+
+# ML/AI
+diffusers==0.24.0
+transformers==4.35.0
+accelerate==0.24.1
+sentencepiece==0.1.99
+
+# Image Processing
+pillow==10.1.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0

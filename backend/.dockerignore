@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv
+venv
+ENV
+env
+.env
+*.egg-info
+dist
+build
+*.log
+.DS_Store
+user_memory.json
+user_preferences.json
