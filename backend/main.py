@@ -854,11 +854,10 @@ class ChatResponse(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    """Preload model on startup"""
-    try:
-        asyncio.create_task(asyncio.to_thread(model_manager.load_model))
-    except Exception as e:
-        logger.warning(f"Background loading failed: {e}")
+    """App startup - models load lazily on first request"""
+    logger.info("Vizzy Chat API started successfully (models load on first request)")
+    logger.info(f"Device: {model_manager.device}")
+    logger.info("App ready to accept requests")
 
 @app.get("/")
 async def root():
