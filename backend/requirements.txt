@@ -17,16 +17,15 @@ python-multipart==0.0.6
 # NumPy (specific version for compatibility)
 numpy==1.24.3
 
-# Hugging Face ecosystem (in correct order)
-huggingface-hub==0.23.0
-tokenizers==0.14.1
-safetensors==0.4.2
+# PyTorch (CPU version for free tier)
+torch==2.1.0
 
-# ML/AI
-diffusers==0.24.0
+# ML/AI - Let transformers manage its own dependencies
 transformers==4.35.0
+diffusers==0.24.0
 accelerate==0.24.1
 sentencepiece==0.1.99
+safetensors==0.4.2
 
 # Image Processing
 pillow==10.1.0
