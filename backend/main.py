@@ -491,7 +491,7 @@ async def generate_content(req):
             model_manager.generate,
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
-            num_images=4,
+            num_images=2,  # Reduced from 4 for faster CPU generation
             guidance_scale=8.0,
             steps=25
         )
@@ -789,11 +789,17 @@ class ModelManager:
                 
                 self.pipe = self.pipe.to(self.device)
                 
-                if self.device == "cuda":
-                    self.pipe.enable_attention_slicing()
+                # Enable optimizations for both GPU and CPU
+                self.pipe.enable_attention_slicing()
+                
+                # CPU-specific optimizations
+                if self.device == "cpu":
+                    logger.info("Running on CPU - generation will take 15-30s per image")
+                    # Reduce memory usage on CPU
+                    self.pipe.enable_vae_slicing()
                     
                 self.loaded = True
-                logger.info("Model loaded successfully")
+                logger.info(f"Model loaded successfully on {self.device}")
             except Exception as e:
                 logger.error(f"Failed to load model: {e}")
                 raise

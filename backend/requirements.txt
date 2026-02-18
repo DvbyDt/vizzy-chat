@@ -19,7 +19,7 @@ numpy==1.24.3
 
 # Hugging Face ecosystem (in correct order)
 huggingface-hub==0.23.0
-tokenizers==0.15.0
+tokenizers==0.14.1
 safetensors==0.4.2
 
 # ML/AI
