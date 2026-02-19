@@ -4,8 +4,8 @@ uvicorn[standard]==0.24.0
 pydantic==2.4.2
 python-multipart==0.0.6
 
-# Image Processing - Use a version that builds easily
-pillow==9.5.0
+# Image Processing - Compatible with Python 3.11
+pillow==10.4.0
 
 # HTTP Requests
 requests==2.31.0
