@@ -1,0 +1,15 @@
+# render.yaml
+services:
+  - type: web
+    name: vizzy-backend
+    runtime: python
+    repo: https://github.com/DvbyDt/vizzy-chat
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: |
+      pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: LEONARDO_API_KEY
+        sync: false
