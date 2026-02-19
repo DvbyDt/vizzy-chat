@@ -14,9 +14,6 @@ from typing import List, Optional, Dict, Any
 import asyncio
 from PIL import Image
 
-# Import Leonardo AI SDK
-from leonardo_ai_sdk import Leonardo
-
 # Import your custom logic
 from memory import update_memory, get_context, get_user_preferences
 from intent import classify_intent, extract_keywords
@@ -46,94 +43,64 @@ app.add_middleware(
 )
 
 # ==============================================
-# LEONARDO.AI CONFIGURATION
+# POLLINATIONS.AI IMAGE GENERATION (COMPLETELY FREE)
 # ==============================================
 
-# Get API key from environment variable
-LEONARDO_API_KEY = os.environ.get("LEONARDO_API_KEY", "")
-
-if not LEONARDO_API_KEY:
-    logger.warning("LEONARDO_API_KEY not set! Please set it in environment variables.")
-
-# Initialize Leonardo client
-leonardo_client = Leonardo(auth_token=LEONARDO_API_KEY)
-
-# Model IDs for different styles (from Leonardo)
-LEONARDO_MODELS = {
-    "creative": "1e60896f-3c26-4296-8ecc-53e2afecc132",  # Leonardo Creative
-    "cinematic": "cd2b2a15-9760-4174-a5ff-4d2925057376",  # Leonardo Cinematic
-    "portrait": "a4538e81-8948-4fec-9082-ec3f79a6673d",   # Leonardo Portrait
-    "anime": "d7fb26e6-7f6c-4a9b-9b5a-9a8d8f0b6b5a",      # Leonardo Anime
-    "realistic": "6b7a3f3b-7a4c-4a7e-8b3a-9c5d9f5b4a3c",   # Leonardo Realistic
-    "sketch": "e9a1c3b2-5f4d-4a6b-9c8d-3f2e1a0b5c6d",      # Leonardo Sketch
-}
-
-# ==============================================
-# LEONARDO IMAGE GENERATION
-# ==============================================
-
-async def generate_with_leonardo(
+async def generate_with_pollinations(
     prompt: str, 
     negative_prompt: str = "", 
     num_images: int = 2,
-    model_id: str = None,
     width: int = 768,
     height: int = 768
 ) -> List[Image.Image]:
     """
-    Generate images using Leonardo.ai API
+    Generate images using Pollinations.ai - 100% free, no API key needed!
     Returns list of PIL Images
     """
     
-    # Select model based on prompt context if not specified
-    if not model_id:
-        prompt_lower = prompt.lower()
-        if any(word in prompt_lower for word in ["cinematic", "movie", "film", "dramatic"]):
-            model_id = LEONARDO_MODELS["cinematic"]
-        elif any(word in prompt_lower for word in ["anime", "manga", "cartoon"]):
-            model_id = LEONARDO_MODELS["anime"]
-        elif any(word in prompt_lower for word in ["portrait", "person", "face", "people"]):
-            model_id = LEONARDO_MODELS["portrait"]
-        elif any(word in prompt_lower for word in ["sketch", "drawing", "pencil"]):
-            model_id = LEONARDO_MODELS["sketch"]
-        elif any(word in prompt_lower for word in ["realistic", "photo", "photograph"]):
-            model_id = LEONARDO_MODELS["realistic"]
-        else:
-            model_id = LEONARDO_MODELS["creative"]  # Default to creative
+    images = []
     
-    try:
-        logger.info(f"🎨 Generating with Leonardo - Model: {model_id}, Images: {num_images}")
+    # Pollinations doesn't use negative prompts directly, but we can incorporate it
+    # into the prompt for better results
+    if negative_prompt and negative_prompt != "blurry, low quality, distorted, ugly, bad anatomy, text, watermark, signature, worst quality":
+        enhanced_prompt = f"{prompt}. Avoid: {negative_prompt[:100]}"
+    else:
+        enhanced_prompt = prompt
+    
+    # Format prompt for URL (replace spaces with %20)
+    formatted_prompt = enhanced_prompt.replace(' ', '%20')
+    
+    for i in range(num_images):
+        # Add random seed for variations
+        seed = random.randint(1, 10000000)
         
-        # Call Leonardo API
-        result = leonardo_client.generate_image(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            num_images=num_images,
-            width=width,
-            height=height,
-            model_id=model_id,
-            guidance_scale=7,
-            num_inference_steps=25,
-            prompt_weight=0.8
-        )
+        # Build the URL - nologo=true removes the Pollinations watermark
+        url = f"https://image.pollinations.ai/prompt/{formatted_prompt}?seed={seed}&width={width}&height={height}&nologo=true"
         
-        # Download images from URLs
-        images = []
-        for image_url in result.image_urls:
-            response = requests.get(image_url, timeout=30)
+        try:
+            logger.info(f"🎨 Generating image {i+1}/{num_images} with seed {seed}")
+            
+            # Download image
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            
+            # Convert to PIL Image
             img = Image.open(BytesIO(response.content))
+            
+            # Ensure RGB mode
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
             images.append(img)
-        
-        logger.info(f"✅ Generated {len(images)} images successfully")
-        return images
-        
-    except Exception as e:
-        logger.error(f"❌ Leonardo generation failed: {e}")
-        
-        # Fallback: Return a placeholder or raise
-        # For demo, we'll create a simple colored placeholder
-        placeholder = Image.new('RGB', (width, height), color='gray')
-        return [placeholder] * num_images
+            logger.info(f"✅ Generated image {i+1}/{num_images} successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate image {i+1}: {e}")
+            # Create a simple colored placeholder as fallback
+            img = Image.new('RGB', (width, height), color='lightgray')
+            images.append(img)
+    
+    return images
 
 # ==============================================
 # CONVERSATION STATE MANAGEMENT
@@ -576,8 +543,8 @@ async def generate_content(req):
         logger.info(f"ART MODE - Using style: {selected_style}")
         logger.info(f"ART MODE - Prompt: {enhanced_prompt}")
         
-        # Use Leonardo for generation
-        images = await generate_with_leonardo(
+        # Use Pollinations for generation
+        images = await generate_with_pollinations(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
@@ -647,8 +614,8 @@ async def generate_content(req):
             enhanced_prompt = f"{selected_type} poster design, {req.message}, {mood} atmosphere, professional typography layout, graphic design, {base_style}"
             logger.info(f"POSTER MODE - Creating poster without slogan")
         
-        # Use Leonardo for generation
-        images = await generate_with_leonardo(
+        # Use Pollinations for generation
+        images = await generate_with_pollinations(
             prompt=enhanced_prompt,
             negative_prompt=f"text, words, letters, {negative_prompt}" if slogan else negative_prompt,
             num_images=2,
@@ -700,8 +667,8 @@ async def generate_content(req):
             else:
                 scene_prompt = f"Closing scene: {scene}, {selected_style}, {mood} atmosphere, resolution, emotional payoff, {base_style}"
             
-            # Use Leonardo for each scene
-            img_list = await generate_with_leonardo(
+            # Use Pollinations for each scene
+            img_list = await generate_with_pollinations(
                 prompt=scene_prompt,
                 negative_prompt=negative_prompt,
                 num_images=1,
@@ -744,8 +711,8 @@ async def generate_content(req):
         
         enhanced_prompt = f"{req.message}, transformed into {target_style} style, {mood} atmosphere, {base_style}"
         
-        # Use Leonardo for generation
-        images = await generate_with_leonardo(
+        # Use Pollinations for generation
+        images = await generate_with_pollinations(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
@@ -784,8 +751,8 @@ async def generate_content(req):
         
         enhanced_prompt = f"{req.message}, {selected_style} business visual, commercial photography, studio lighting, professional, {mood} atmosphere, {base_style}"
         
-        # Use Leonardo for generation
-        images = await generate_with_leonardo(
+        # Use Pollinations for generation
+        images = await generate_with_pollinations(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
@@ -821,8 +788,8 @@ async def generate_content(req):
     else:  # personal mode or default
         enhanced_prompt = f"{req.message}, {context_prompt}, {base_style}"
         
-        # Use Leonardo for generation
-        images = await generate_with_leonardo(
+        # Use Pollinations for generation
+        images = await generate_with_pollinations(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
@@ -879,16 +846,16 @@ async def root():
         "service": "Vizzy Chat API",
         "version": "1.0.0",
         "status": "operational",
-        "model": "Leonardo.ai",
-        "api_key_set": bool(LEONARDO_API_KEY)
+        "model": "Pollinations.ai",
+        "note": "100% free, no API key needed!"
     }
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "model": "Leonardo.ai",
-        "api_key_set": bool(LEONARDO_API_KEY),
+        "model": "Pollinations.ai",
+        "free_service": True,
         "timestamp": time.time()
     }
 

@@ -1,22 +1,14 @@
-# Core FastAPI - Pin to versions with prebuilt wheels
+# Core FastAPI
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.4.2
-pydantic-core==2.10.1
 python-multipart==0.0.6
 
-# Image Processing - Compatible with Python 3.11
-pillow==10.4.0
+# Image Processing
+pillow==10.0.0
 
 # HTTP Requests
 requests==2.31.0
 
 # Environment Variables
 python-dotenv==1.0.0
-
-# Leonardo AI SDK
-leonardo-ai-sdk==7.0.0
-
-# Build tools (essential!)
-wheel==0.40.0
-setuptools==68.0.0
