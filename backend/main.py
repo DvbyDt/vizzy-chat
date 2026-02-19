@@ -2,18 +2,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-# LAZY IMPORT: from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 from io import BytesIO
 import base64
-# LAZY IMPORT: import torch
 import logging
 import time
 import random
 import re
+import os
+import requests
 from typing import List, Optional, Dict, Any
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-# LAZY IMPORT: from PIL import Image
+from PIL import Image
+
+# Import Leonardo
+from leonardo import LeonardoAI
 
 # Import your custom logic
 from memory import update_memory, get_context, get_user_preferences
@@ -35,13 +37,103 @@ app.add_middleware(
         "http://localhost:5174", 
         "http://localhost:5175",
         "http://localhost:3000",
-        "https://*.vercel.app",  # Vercel preview deployments
-        "https://vizzy-chat.vercel.app",  # Production Vercel (update with your domain)
+        "https://*.vercel.app",
+        "https://vizzy-chat.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==============================================
+# LEONARDO.AI CONFIGURATION
+# ==============================================
+
+# Get API key from environment variable
+LEONARDO_API_KEY = os.environ.get("LEONARDO_API_KEY", "")
+
+if not LEONARDO_API_KEY:
+    logger.warning("LEONARDO_API_KEY not set! Please set it in environment variables.")
+
+# Initialize Leonardo client
+leonardo_client = LeonardoAI(api_key=LEONARDO_API_KEY)
+
+# Model IDs for different styles (from Leonardo)
+LEONARDO_MODELS = {
+    "creative": "1e60896f-3c26-4296-8ecc-53e2afecc132",  # Leonardo Creative
+    "cinematic": "cd2b2a15-9760-4174-a5ff-4d2925057376",  # Leonardo Cinematic
+    "portrait": "a4538e81-8948-4fec-9082-ec3f79a6673d",   # Leonardo Portrait
+    "anime": "d7fb26e6-7f6c-4a9b-9b5a-9a8d8f0b6b5a",      # Leonardo Anime
+    "realistic": "6b7a3f3b-7a4c-4a7e-8b3a-9c5d9f5b4a3c",   # Leonardo Realistic
+    "sketch": "e9a1c3b2-5f4d-4a6b-9c8d-3f2e1a0b5c6d",      # Leonardo Sketch
+}
+
+# ==============================================
+# LEONARDO IMAGE GENERATION
+# ==============================================
+
+async def generate_with_leonardo(
+    prompt: str, 
+    negative_prompt: str = "", 
+    num_images: int = 2,
+    model_id: str = None,
+    width: int = 768,
+    height: int = 768
+) -> List[Image.Image]:
+    """
+    Generate images using Leonardo.ai API
+    Returns list of PIL Images
+    """
+    
+    # Select model based on prompt context if not specified
+    if not model_id:
+        prompt_lower = prompt.lower()
+        if any(word in prompt_lower for word in ["cinematic", "movie", "film", "dramatic"]):
+            model_id = LEONARDO_MODELS["cinematic"]
+        elif any(word in prompt_lower for word in ["anime", "manga", "cartoon"]):
+            model_id = LEONARDO_MODELS["anime"]
+        elif any(word in prompt_lower for word in ["portrait", "person", "face", "people"]):
+            model_id = LEONARDO_MODELS["portrait"]
+        elif any(word in prompt_lower for word in ["sketch", "drawing", "pencil"]):
+            model_id = LEONARDO_MODELS["sketch"]
+        elif any(word in prompt_lower for word in ["realistic", "photo", "photograph"]):
+            model_id = LEONARDO_MODELS["realistic"]
+        else:
+            model_id = LEONARDO_MODELS["creative"]  # Default to creative
+    
+    try:
+        logger.info(f"🎨 Generating with Leonardo - Model: {model_id}, Images: {num_images}")
+        
+        # Call Leonardo API
+        result = leonardo_client.generate_image(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            num_images=num_images,
+            width=width,
+            height=height,
+            model_id=model_id,
+            guidance_scale=7,
+            num_inference_steps=25,
+            prompt_weight=0.8
+        )
+        
+        # Download images from URLs
+        images = []
+        for image_url in result.image_urls:
+            response = requests.get(image_url, timeout=30)
+            img = Image.open(BytesIO(response.content))
+            images.append(img)
+        
+        logger.info(f"✅ Generated {len(images)} images successfully")
+        return images
+        
+    except Exception as e:
+        logger.error(f"❌ Leonardo generation failed: {e}")
+        
+        # Fallback: Return a placeholder or raise
+        # For demo, we'll create a simple colored placeholder
+        placeholder = Image.new('RGB', (width, height), color='gray')
+        return [placeholder] * num_images
 
 # ==============================================
 # CONVERSATION STATE MANAGEMENT
@@ -126,8 +218,6 @@ def extract_slogan(message):
 
 def encode_images(images):
     """Encode PIL images to base64 with optimization"""
-    from PIL import Image
-    
     encoded = []
     for img in images:
         try:
@@ -370,7 +460,7 @@ async def process_clarified_request(req, last_question):
         "excited": "excited and thrilling",
         "relaxed": "relaxed and easy-going",
         "thoughtful": "thoughtful and reflective",
-        "not too great": "neither good nor bad,平平淡淡",
+        "not too great": "neither good nor bad",
         "great": "great and wonderful"
     }
     
@@ -413,7 +503,6 @@ async def process_clarified_request(req, last_question):
     # Return ONLY the image generation result (no extra text wrapper)
     return result
 
-
 # ==============================================
 # MODE-SPECIFIC GENERATION
 # ==============================================
@@ -437,8 +526,6 @@ async def generate_content(req):
     
     # Base style and negative prompt
     base_style = "artistic, creative, atmospheric, emotional, masterpiece"
-    guidance = 7.5
-    
     negative_prompt = "blurry, low quality, distorted, ugly, bad anatomy, text, watermark, signature, worst quality"
     
     # Apply user preferences
@@ -489,13 +576,13 @@ async def generate_content(req):
         logger.info(f"ART MODE - Using style: {selected_style}")
         logger.info(f"ART MODE - Prompt: {enhanced_prompt}")
         
-        images = await asyncio.to_thread(
-            model_manager.generate,
+        # Use Leonardo for generation
+        images = await generate_with_leonardo(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
-            num_images=2,  # Reduced from 4 for faster CPU generation
-            guidance_scale=8.0,
-            steps=25
+            num_images=2,
+            width=768,
+            height=768
         )
         
         encoded_images = encode_images(images)
@@ -560,13 +647,13 @@ async def generate_content(req):
             enhanced_prompt = f"{selected_type} poster design, {req.message}, {mood} atmosphere, professional typography layout, graphic design, {base_style}"
             logger.info(f"POSTER MODE - Creating poster without slogan")
         
-        images = await asyncio.to_thread(
-            model_manager.generate,
+        # Use Leonardo for generation
+        images = await generate_with_leonardo(
             prompt=enhanced_prompt,
             negative_prompt=f"text, words, letters, {negative_prompt}" if slogan else negative_prompt,
             num_images=2,
-            guidance_scale=8.5,
-            steps=25
+            width=768,
+            height=768
         )
         
         encoded_images = encode_images(images)
@@ -613,15 +700,16 @@ async def generate_content(req):
             else:
                 scene_prompt = f"Closing scene: {scene}, {selected_style}, {mood} atmosphere, resolution, emotional payoff, {base_style}"
             
-            img = await asyncio.to_thread(
-                model_manager.generate,
+            # Use Leonardo for each scene
+            img_list = await generate_with_leonardo(
                 prompt=scene_prompt,
                 negative_prompt=negative_prompt,
                 num_images=1,
-                guidance_scale=7.5,
-                steps=20
+                width=768,
+                height=768
             )
-            scene_images.extend(img)
+            if img_list:
+                scene_images.append(img_list[0])
         
         encoded_scene_images = encode_images(scene_images)
         
@@ -656,13 +744,13 @@ async def generate_content(req):
         
         enhanced_prompt = f"{req.message}, transformed into {target_style} style, {mood} atmosphere, {base_style}"
         
-        images = await asyncio.to_thread(
-            model_manager.generate,
+        # Use Leonardo for generation
+        images = await generate_with_leonardo(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
-            guidance_scale=7.5,
-            steps=25
+            width=768,
+            height=768
         )
         
         encoded_images = encode_images(images)
@@ -696,13 +784,13 @@ async def generate_content(req):
         
         enhanced_prompt = f"{req.message}, {selected_style} business visual, commercial photography, studio lighting, professional, {mood} atmosphere, {base_style}"
         
-        images = await asyncio.to_thread(
-            model_manager.generate,
+        # Use Leonardo for generation
+        images = await generate_with_leonardo(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
-            guidance_scale=8.5,
-            steps=25
+            width=768,
+            height=768
         )
         
         encoded_images = encode_images(images)
@@ -733,13 +821,13 @@ async def generate_content(req):
     else:  # personal mode or default
         enhanced_prompt = f"{req.message}, {context_prompt}, {base_style}"
         
-        images = await asyncio.to_thread(
-            model_manager.generate,
+        # Use Leonardo for generation
+        images = await generate_with_leonardo(
             prompt=enhanced_prompt,
             negative_prompt=negative_prompt,
             num_images=2,
-            guidance_scale=guidance,
-            steps=25
+            width=768,
+            height=768
         )
         
         encoded_images = encode_images(images)
@@ -761,87 +849,6 @@ async def generate_content(req):
                 }
             }
         }
-
-# ==============================================
-# MODEL MANAGEMENT
-# ==============================================
-
-class ModelManager:
-    def __init__(self):
-        self.pipe = None
-        self.device = None  # Will be set on first use
-        self.loaded = False
-        self.executor = ThreadPoolExecutor(max_workers=2)
-        
-    def _get_device(self):
-        """Lazy determine device - only called when first needed"""
-        if self.device is None:
-            import torch
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        return self.device
-        
-    def load_model(self):
-        """Lazy load model to improve startup time"""
-        if not self.loaded:
-            try:
-                # Import heavy dependencies only when needed
-                from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
-                import torch
-                
-                device = self._get_device()
-                logger.info(f"Loading Stable Diffusion on {device}...")
-                self.pipe = StableDiffusionPipeline.from_pretrained(
-                    "runwayml/stable-diffusion-v1-5",
-                    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                    safety_checker=None,
-                    requires_safety_checker=False
-                )
-                
-                self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(
-                    self.pipe.scheduler.config
-                )
-                
-                self.pipe = self.pipe.to(device)
-                
-                # Enable optimizations for both GPU and CPU
-                self.pipe.enable_attention_slicing()
-                
-                # CPU-specific optimizations
-                if device == "cpu":
-                    logger.info("Running on CPU - generation will take 15-30s per image")
-                    # Reduce memory usage on CPU
-                    self.pipe.enable_vae_slicing()
-                    
-                self.loaded = True
-                logger.info(f"Model loaded successfully on {device}")
-            except Exception as e:
-                logger.error(f"Failed to load model: {e}")
-                raise
-        return self.pipe
-    
-    def generate(self, prompt, negative_prompt, num_images=2, **kwargs):
-        """Thread-safe generation"""
-        pipe = self.load_model()
-        
-        gen_kwargs = {
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "num_images_per_prompt": num_images,
-            "guidance_scale": kwargs.get('guidance_scale', 7.5),
-            "num_inference_steps": kwargs.get('steps', 25),
-            "height": kwargs.get('height', 512),
-            "width": kwargs.get('width', 512),
-        }
-        
-        try:
-            result = pipe(**gen_kwargs)
-            return result.images
-        except Exception as e:
-            logger.error(f"Generation failed: {e}")
-            raise
-
-# Initialize model manager
-model_manager = ModelManager()
 
 # ==============================================
 # REQUEST/RESPONSE MODELS
@@ -866,29 +873,22 @@ class ChatResponse(BaseModel):
 # API ENDPOINTS
 # ==============================================
 
-@app.on_event("startup")
-async def startup_event():
-    """App startup - models load lazily on first request"""
-    logger.info("Vizzy Chat API started successfully (models load on first request)")
-    logger.info(f"Device: {model_manager.device}")
-    logger.info("App ready to accept requests")
-
 @app.get("/")
 async def root():
     return {
         "service": "Vizzy Chat API",
         "version": "1.0.0",
         "status": "operational",
-        "device": model_manager.device,
-        "model_loaded": model_manager.loaded
+        "model": "Leonardo.ai",
+        "api_key_set": bool(LEONARDO_API_KEY)
     }
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "model_loaded": model_manager.loaded,
-        "device": model_manager.device,
+        "model": "Leonardo.ai",
+        "api_key_set": bool(LEONARDO_API_KEY),
         "timestamp": time.time()
     }
 

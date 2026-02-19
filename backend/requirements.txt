@@ -1,38 +1,17 @@
-# fastapi
-# uvicorn
-# torch
-# diffusers
-# transformers
-# accelerate
-# pillow
-# sentencepiece
-
-
-# Core
+# Core FastAPI
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.4.2
 python-multipart==0.0.6
 
-# NumPy (specific version for compatibility)
-numpy==1.24.3
-
-# PyTorch (CPU version for free tier)
-torch==2.1.0
-
-# Hugging Face Hub - Must be older version with cached_download
-huggingface-hub==0.16.4
-
-# ML/AI - Stable tested versions that work together
-transformers==4.30.0
-diffusers==0.21.0
-accelerate==0.20.3
-sentencepiece==0.1.99
-safetensors==0.3.1
-
 # Image Processing
 pillow==10.1.0
 
-# Utilities
-python-dotenv==1.0.0
+# HTTP Requests for API calls
 requests==2.31.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Leonardo.ai SDK (you'll need to install this)
+leonardo-ai==0.1.0
