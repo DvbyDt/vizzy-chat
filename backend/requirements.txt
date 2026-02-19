@@ -4,14 +4,15 @@ uvicorn[standard]==0.24.0
 pydantic==2.4.2
 python-multipart==0.0.6
 
-# Image Processing
-pillow==10.1.0
+# Image Processing - Use a version that builds easily
+pillow==9.5.0
 
-# HTTP Requests for API calls
+# HTTP Requests
 requests==2.31.0
 
 # Environment Variables
 python-dotenv==1.0.0
 
-# Leonardo.ai SDK (you'll need to install this)
-leonardo-ai==0.1.0
+# Build tools (essential!)
+wheel==0.40.0
+setuptools==68.0.0
