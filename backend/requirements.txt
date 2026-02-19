@@ -13,6 +13,9 @@ requests==2.31.0
 # Environment Variables
 python-dotenv==1.0.0
 
+# Leonardo AI SDK
+leonardo-ai-sdk==0.3.0
+
 # Build tools (essential!)
 wheel==0.40.0
 setuptools==68.0.0

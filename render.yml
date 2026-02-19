@@ -14,7 +14,5 @@ services:
       pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.13
-      - key: d8967d70-cdf7-493a-9ac2-e8866c7e32c7 
+      - key: LEONARDO_API_KEY
         sync: false
