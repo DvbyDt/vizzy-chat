@@ -7,9 +7,13 @@ services:
     plan: free
     region: oregon
     branch: main
+    rootDir: backend 
     buildCommand: |
-      pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.13
       - key: LEONARDO_API_KEY
         sync: false
