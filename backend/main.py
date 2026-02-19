@@ -14,8 +14,8 @@ from typing import List, Optional, Dict, Any
 import asyncio
 from PIL import Image
 
-# Import Leonardo
-from leonardo import LeonardoAI
+# Import Leonardo AI SDK
+from leonardo_ai_sdk import Leonardo
 
 # Import your custom logic
 from memory import update_memory, get_context, get_user_preferences
@@ -56,7 +56,7 @@ if not LEONARDO_API_KEY:
     logger.warning("LEONARDO_API_KEY not set! Please set it in environment variables.")
 
 # Initialize Leonardo client
-leonardo_client = LeonardoAI(api_key=LEONARDO_API_KEY)
+leonardo_client = Leonardo(auth_token=LEONARDO_API_KEY)
 
 # Model IDs for different styles (from Leonardo)
 LEONARDO_MODELS = {
