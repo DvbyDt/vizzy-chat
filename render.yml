@@ -11,7 +11,8 @@ services:
       cd backend
       python --version
       pip install --upgrade pip setuptools wheel
-      pip install --only-binary=:all: -r requirements.txt || pip install -r requirements.txt
+      pip install --only-binary=:all: pydantic pydantic-core
+      pip install -r requirements.txt
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
