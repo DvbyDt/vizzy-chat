@@ -1,14 +1,9 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+# backend/story.py - COMPLETELY FIXED - No transformers, no torch, no external dependencies
 import random
-from typing import Dict, List, Tuple
-import re
+from typing import Dict, List
 
 class StoryGenerator:
     def __init__(self):
-        self.tokenizer = None
-        self.model = None
-        self.device = None
         self.story_templates = {
             "adventure": "A journey filled with excitement and discovery",
             "romance": "A tale of connection and emotion",
@@ -31,19 +26,10 @@ class StoryGenerator:
             "neutral": "balanced and atmospheric"
         }
     
-    def _load_model(self):
-        """Lazy load the model"""
-        if self.tokenizer is None or self.model is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.tokenizer = AutoTokenizer.from_pretrained("gpt2-medium")
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            self.model = AutoModelForCausalLM.from_pretrained("gpt2-medium")
-            self.model = self.model.to(self.device)
-            self.model.eval()
+    # REMOVED: _load_model method - no longer needed
     
     def generate_story(self, prompt: str, mood: str = "neutral") -> Dict:
-        """Generate a simple story based on prompt and mood"""
+        """Generate a simple story based on prompt and mood - NO EXTERNAL DEPENDENCIES"""
         
         # Simple story templates
         story_templates = {
@@ -146,58 +132,10 @@ class StoryGenerator:
         
         return "adventure"  # Default
     
-    def _parse_story(self, text: str, original_prompt: str, mood: str) -> Dict:
-        """Parse the generated text into structured story"""
-        lines = text.split('\n')
-        
-        title = "Your Story"
-        scenes = []
-        
-        # Extract title
-        for line in lines:
-            if line.startswith("TITLE:"):
-                title = line.replace("TITLE:", "").strip()
-                break
-        
-        # Extract scenes
-        current_scene = ""
-        scene_num = 0
-        
-        for line in lines:
-            if line.startswith("Scene 1:") or line.startswith("Scene 2:") or line.startswith("Scene 3:"):
-                if current_scene:
-                    scenes.append(current_scene.strip())
-                current_scene = line.split(":", 1)[1].strip() if ":" in line else ""
-                scene_num += 1
-            elif scene_num > 0 and line.strip() and not line.startswith("Scene"):
-                current_scene += " " + line.strip()
-        
-        # Add the last scene
-        if current_scene:
-            scenes.append(current_scene.strip())
-        
-        # Ensure we have 3 scenes
-        while len(scenes) < 3:
-            scenes.append(self._generate_fallback_scene(original_prompt, len(scenes) + 1, mood))
-        
-        # Truncate to 3 scenes
-        scenes = scenes[:3]
-        
-        # Generate scene descriptions for image prompts
-        mood_desc = self.mood_prompts.get(mood, "atmospheric")
-        image_prompts = self._generate_image_prompts(scenes, mood_desc)
-        
-        return {
-            "title": title,
-            "scenes": scenes,
-            "image_prompts": image_prompts,
-            "theme": original_prompt,
-            "mood": mood,
-            "scene_count": len(scenes)
-        }
+    # REMOVED: _parse_story method - not needed with template-based approach
     
     def _generate_fallback_scene(self, prompt: str, scene_num: int, mood: str) -> str:
-        """Generate a fallback scene if parsing fails"""
+        """Generate a fallback scene if needed"""
         fallbacks = {
             1: f"In a {mood} setting, our story begins with {prompt}.",
             2: f"The journey continues as the {mood} atmosphere deepens.",
