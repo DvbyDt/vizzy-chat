@@ -47,6 +47,7 @@ app.add_middleware(
 # ==============================================
 
 # List of fast, free APIs to try
+# List of fast, free APIs to try
 FAST_APIS = [
     {
         "name": "DeepAI",
@@ -57,17 +58,23 @@ FAST_APIS = [
         "timeout": 15
     },
     {
-        "name": "Stable Diffusion Online",
-        "url": "https://stablediffusionapi.com/api/v3/text2img",
-        "type": "post",
-        "json": {"prompt": "{prompt}"},
-        "timeout": 15
-    },
-    {
         "name": "Pollinations",
-        "url": "https://image.pollinations.ai/prompt/{prompt}?width=512&height=512&nologo=true",
+        "url": "https://image.pollinations.ai/prompt/{prompt}?width=512&height=512&nologo=true&model=flux",
         "type": "get",
         "timeout": 10
+    },
+    {
+        "name": "Stable Diffusion API",
+        "url": "https://stablediffusionapi.com/api/v3/text2img",
+        "type": "post",
+        "json": {
+            "key": "",  # Free tier doesn't need key
+            "prompt": "{prompt}",
+            "width": "512",
+            "height": "512",
+            "samples": "1"
+        },
+        "timeout": 15
     }
 ]
 
@@ -75,6 +82,7 @@ async def try_api(api_config, prompt):
     """Try a single API and return image if successful"""
     try:
         start_time = time.time()
+        logger.info(f"🔄 Trying {api_config['name']}...")
         
         if api_config["type"] == "get":
             # GET request
@@ -82,57 +90,60 @@ async def try_api(api_config, prompt):
             response = requests.get(url, timeout=api_config.get("timeout", 15))
             
             if response.status_code == 200:
-                img = Image.open(BytesIO(response.content))
-                elapsed = time.time() - start_time
-                logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
-                return img
-                
-        elif api_config["type"] == "post":
-            # POST request
-            if "data" in api_config:
-                # Form data
-                data = {api_config["data"]: prompt}
-                response = requests.post(
-                    api_config["url"], 
-                    data=data, 
-                    headers=api_config.get("headers", {}),
-                    timeout=api_config.get("timeout", 15)
-                )
-            else:
-                # JSON data
-                json_data = {}
-                for key, value in api_config.get("json", {}).items():
-                    json_data[key] = str(value).replace("{prompt}", prompt)
-                
-                response = requests.post(
-                    api_config["url"], 
-                    json=json_data,
-                    headers=api_config.get("headers", {}),
-                    timeout=api_config.get("timeout", 15)
-                )
-            
-            if response.status_code == 200:
-                result = response.json()
-                # Try to extract image URL from common response formats
-                image_url = None
-                if "output_url" in result:
-                    image_url = result["output_url"]
-                elif "output" in result:
-                    image_url = result["output"]
-                elif "images" in result and len(result["images"]) > 0:
-                    image_url = result["images"][0]
-                
-                if image_url:
-                    img_response = requests.get(image_url, timeout=10)
-                    img = Image.open(BytesIO(img_response.content))
+                # Check if response is an image
+                content_type = response.headers.get('content-type', '')
+                if 'image' in content_type:
+                    img = Image.open(BytesIO(response.content))
                     elapsed = time.time() - start_time
                     logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
                     return img
+                else:
+                    logger.warning(f"⚠️ {api_config['name']} returned non-image content: {content_type}")
+            else:
+                logger.warning(f"⚠️ {api_config['name']} returned status {response.status_code}")
+                
+        elif api_config["type"] == "post":
+            # POST request
+            headers = api_config.get("headers", {})
+            json_data = api_config.get("json", {})
+            json_data["prompt"] = json_data.get("prompt", "{prompt}").replace("{prompt}", prompt)
+            
+            response = requests.post(
+                api_config["url"],
+                json=json_data,
+                headers=headers,
+                timeout=api_config.get("timeout", 15)
+            )
+            
+            if response.status_code == 200:
+                try:
+                    # Try to get image URL from response
+                    resp_json = response.json()
+                    if "url" in resp_json:
+                        img_response = requests.get(resp_json["url"], timeout=10)
+                        if img_response.status_code == 200:
+                            img = Image.open(BytesIO(img_response.content))
+                            elapsed = time.time() - start_time
+                            logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
+                            return img
+                    elif "image" in resp_json:
+                        # Handle base64 image response
+                        img_data = base64.b64decode(resp_json["image"])
+                        img = Image.open(BytesIO(img_data))
+                        elapsed = time.time() - start_time
+                        logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
+                        return img
+                except Exception as parse_err:
+                    logger.warning(f"⚠️ {api_config['name']} response parsing failed: {str(parse_err)}")
+            else:
+                logger.warning(f"⚠️ {api_config['name']} returned status {response.status_code}")
+            
     except Exception as e:
-        logger.debug(f"❌ {api_config['name']} failed: {str(e)[:50]}")
+        logger.warning(f"❌ {api_config['name']} failed: {str(e)}")
         return None
     
     return None
+
 
 async def generate_image_fast(prompt: str) -> Image.Image:
     """
@@ -150,57 +161,60 @@ async def generate_image_fast(prompt: str) -> Image.Image:
     return create_styled_placeholder(prompt)
 
 def create_styled_placeholder(prompt: str) -> Image.Image:
-    """Create a nice-looking placeholder with the prompt text"""
+    """Create a nice-looking placeholder with the prompt text - RETURNS REAL IMAGE"""
     width, height = 512, 512
     
-    # Generate a gradient-like background
+    # Create a gradient background
     img = Image.new('RGB', (width, height), color='#2b2b2b')
     draw = ImageDraw.Draw(img)
     
-    # Add some circles for visual interest
+    # Add some colored circles for visual interest
     colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9']
-    for i in range(8):
-        x = random.randint(0, width)
-        y = random.randint(0, height)
-        r = random.randint(30, 100)
+    for i in range(5):
+        x = random.randint(50, width-50)
+        y = random.randint(50, height-50)
+        r = random.randint(40, 80)
         color = random.choice(colors)
         draw.ellipse([x-r, y-r, x+r, y+r], fill=color, outline=None)
     
-    # Add text
+    # Try to load a font
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 24)
+        # Different font paths for different systems
+        font_paths = [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "C:\\Windows\\Fonts\\Arial.ttf"
+        ]
+        font = None
+        for path in font_paths:
+            if os.path.exists(path):
+                font = ImageFont.truetype(path, 24)
+                break
+        if font is None:
+            font = ImageFont.load_default()
     except:
         font = ImageFont.load_default()
     
-    # Draw prompt
-    words = prompt.split()
-    lines = []
-    current_line = []
-    
-    for word in words:
-        current_line.append(word)
-        if len(' '.join(current_line)) > 30:
-            lines.append(' '.join(current_line[:-1]))
-            current_line = [current_line[-1]]
-    if current_line:
-        lines.append(' '.join(current_line))
-    
-    y_pos = height//2 - 30 * len(lines)
-    for line in lines[:3]:
-        try:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            text_width = bbox[2] - bbox[0]
-            draw.text(((width - text_width) // 2, y_pos), line, fill='white', font=font)
-        except:
-            pass
-        y_pos += 40
-    
-    # Add small note
-    note = "✨ AI Generated"
+    # Draw "AI Generated" text
     try:
-        bbox = draw.textbbox((0, 0), note, font=font)
+        text = "✨ AI Generated ✨"
+        bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
-        draw.text(((width - text_width) // 2, height - 50), note, fill='white', font=font)
+        draw.text(((width - text_width) // 2, height//2 - 40), text, fill='white', font=font)
+        
+        # Draw prompt preview
+        words = prompt.split()
+        preview = " ".join(words[:4]) + "..." if len(words) > 4 else prompt
+        bbox = draw.textbbox((0, 0), preview, font=font)
+        text_width = bbox[2] - bbox[0]
+        draw.text(((width - text_width) // 2, height//2 + 20), preview, fill='white', font=font)
+        
+        # Draw small note
+        note = "(API temporarily unavailable)"
+        small_font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), note, font=small_font)
+        text_width = bbox[2] - bbox[0]
+        draw.text(((width - text_width) // 2, height - 50), note, fill='white', font=small_font)
     except:
         pass
     
@@ -809,3 +823,20 @@ async def chat(req: ChatRequest):
                 "content": {"text": f"Generation failed: {str(e)}"}
             }
         )
+    
+@app.get("/test-deepai")
+async def test_deepai():
+    """Test DeepAI API directly"""
+    try:
+        response = requests.post(
+            "https://api.deepai.org/api/text-to-image",
+            data={'text': 'a beautiful sunset'},
+            headers={'api-key': 'quickstart-QUdJIGlzIGNvbWluZy4uLi4K'},
+            timeout=10
+        )
+        return {
+            "status": response.status_code,
+            "response": response.json() if response.status_code == 200 else response.text[:200]
+        }
+    except Exception as e:
+        return {"error": str(e)}
