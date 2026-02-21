@@ -43,188 +43,114 @@ app.add_middleware(
 )
 
 # ==============================================
-# MULTI-API IMAGE GENERATION (FAST & RELIABLE)
+# HUGGING FACE IMAGE GENERATION
 # ==============================================
 
-# List of fast, free APIs to try
-# List of fast, free APIs to try
-FAST_APIS = [
-    {
-        "name": "DeepAI",
-        "url": "https://api.deepai.org/api/text-to-image",
-        "headers": {'api-key': 'quickstart-QUdJIGlzIGNvbWluZy4uLi4K'},
-        "type": "post",
-        "data": "text",
-        "timeout": 15
-    },
-    {
-        "name": "Pollinations",
-        "url": "https://image.pollinations.ai/prompt/{prompt}?width=512&height=512&nologo=true&model=flux",
-        "type": "get",
-        "timeout": 10
-    },
-    {
-        "name": "Stable Diffusion API",
-        "url": "https://stablediffusionapi.com/api/v3/text2img",
-        "type": "post",
-        "json": {
-            "key": "",  # Free tier doesn't need key
-            "prompt": "{prompt}",
-            "width": "512",
-            "height": "512",
-            "samples": "1"
-        },
-        "timeout": 15
-    }
-]
+# Replace with your actual Hugging Face Space URL
+HF_API_URL = "https://Dvbydt-vizzy-chat-api.hf.space/generate"
 
-async def try_api(api_config, prompt):
-    """Try a single API and return image if successful"""
+async def generate_with_hf(prompt: str, num_images: int = 2) -> List[Image.Image]:
+    """
+    Generate images using Hugging Face Space
+    Returns list of PIL Images
+    """
+    images = []
+    
     try:
-        start_time = time.time()
-        logger.info(f"🔄 Trying {api_config['name']}...")
+        logger.info(f"🎨 Generating {num_images} image(s) with Hugging Face")
         
-        if api_config["type"] == "get":
-            # GET request
-            url = api_config["url"].replace("{prompt}", prompt.replace(' ', '%20'))
-            response = requests.get(url, timeout=api_config.get("timeout", 15))
-            
-            if response.status_code == 200:
-                # Check if response is an image
-                content_type = response.headers.get('content-type', '')
-                if 'image' in content_type:
-                    img = Image.open(BytesIO(response.content))
-                    elapsed = time.time() - start_time
-                    logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
-                    return img
-                else:
-                    logger.warning(f"⚠️ {api_config['name']} returned non-image content: {content_type}")
+        response = requests.post(
+            HF_API_URL,
+            json={
+                "prompt": prompt,
+                "num_images": num_images
+            },
+            timeout=60  # HF can be slow first time
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("status") == "success":
+                for img_base64 in data.get("images", []):
+                    img_data = base64.b64decode(img_base64)
+                    img = Image.open(BytesIO(img_data))
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    images.append(img)
+                logger.info(f"✅ Got {len(images)} images from Hugging Face")
             else:
-                logger.warning(f"⚠️ {api_config['name']} returned status {response.status_code}")
-                
-        elif api_config["type"] == "post":
-            # POST request
-            headers = api_config.get("headers", {})
-            json_data = api_config.get("json", {})
-            json_data["prompt"] = json_data.get("prompt", "{prompt}").replace("{prompt}", prompt)
-            
-            response = requests.post(
-                api_config["url"],
-                json=json_data,
-                headers=headers,
-                timeout=api_config.get("timeout", 15)
-            )
-            
-            if response.status_code == 200:
-                try:
-                    # Try to get image URL from response
-                    resp_json = response.json()
-                    if "url" in resp_json:
-                        img_response = requests.get(resp_json["url"], timeout=10)
-                        if img_response.status_code == 200:
-                            img = Image.open(BytesIO(img_response.content))
-                            elapsed = time.time() - start_time
-                            logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
-                            return img
-                    elif "image" in resp_json:
-                        # Handle base64 image response
-                        img_data = base64.b64decode(resp_json["image"])
-                        img = Image.open(BytesIO(img_data))
-                        elapsed = time.time() - start_time
-                        logger.info(f"✅ {api_config['name']} succeeded in {elapsed:.2f}s")
-                        return img
-                except Exception as parse_err:
-                    logger.warning(f"⚠️ {api_config['name']} response parsing failed: {str(parse_err)}")
-            else:
-                logger.warning(f"⚠️ {api_config['name']} returned status {response.status_code}")
+                logger.error(f"❌ Hugging Face error: {data.get('status')}")
+        else:
+            logger.error(f"❌ Hugging Face HTTP error: {response.status_code}")
             
     except Exception as e:
-        logger.warning(f"❌ {api_config['name']} failed: {str(e)}")
-        return None
+        logger.error(f"❌ Hugging Face request failed: {e}")
     
-    return None
-
-
-async def generate_image_fast(prompt: str) -> Image.Image:
-    """
-    Try multiple APIs in sequence, return first successful result
-    Usually returns in 2-5 seconds!
-    """
-    # Try each API in order of speed/reliability
-    for api in FAST_APIS:
-        result = await try_api(api, prompt)
-        if result is not None:
-            return result
+    # If HF fails, create placeholder images
+    if not images:
+        logger.warning("⚠️ Using placeholder images")
+        for i in range(num_images):
+            img = create_emergency_placeholder(prompt, i)
+            images.append(img)
     
-    # If all APIs fail, create a styled placeholder
-    logger.warning("⚠️ All APIs failed, creating placeholder")
-    return create_styled_placeholder(prompt)
+    return images
 
-def create_styled_placeholder(prompt: str) -> Image.Image:
-    """Create a nice-looking placeholder with the prompt text - RETURNS REAL IMAGE"""
+def create_emergency_placeholder(prompt: str, index: int) -> Image.Image:
+    """Emergency placeholder when HF fails"""
     width, height = 512, 512
     
-    # Create a gradient background
-    img = Image.new('RGB', (width, height), color='#2b2b2b')
+    # Color schemes
+    colors = [
+        (52, 152, 219),  # Blue
+        (155, 89, 182),  # Purple
+        (52, 73, 94),    # Dark Blue
+        (243, 156, 18),  # Orange
+        (231, 76, 60),   # Red
+        (46, 204, 113),  # Green
+    ]
+    
+    color = colors[index % len(colors)]
+    
+    # Create image
+    img = Image.new('RGB', (width, height), color=color)
     draw = ImageDraw.Draw(img)
     
-    # Add some colored circles for visual interest
-    colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9']
-    for i in range(5):
-        x = random.randint(50, width-50)
-        y = random.randint(50, height-50)
-        r = random.randint(40, 80)
-        color = random.choice(colors)
-        draw.ellipse([x-r, y-r, x+r, y+r], fill=color, outline=None)
+    # Add some circles for visual interest
+    for i in range(3):
+        x = random.randint(100, width-100)
+        y = random.randint(100, height-100)
+        r = random.randint(30, 60)
+        circle_color = tuple(min(c + 30, 255) for c in color)
+        draw.ellipse([x-r, y-r, x+r, y+r], fill=circle_color, outline=None)
     
-    # Try to load a font
+    # Add text
     try:
-        # Different font paths for different systems
-        font_paths = [
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "C:\\Windows\\Fonts\\Arial.ttf"
-        ]
-        font = None
-        for path in font_paths:
-            if os.path.exists(path):
-                font = ImageFont.truetype(path, 24)
-                break
-        if font is None:
-            font = ImageFont.load_default()
-    except:
         font = ImageFont.load_default()
-    
-    # Draw "AI Generated" text
-    try:
-        text = "✨ AI Generated ✨"
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((width - text_width) // 2, height//2 - 40), text, fill='white', font=font)
         
-        # Draw prompt preview
+        # Format prompt text
         words = prompt.split()
-        preview = " ".join(words[:4]) + "..." if len(words) > 4 else prompt
-        bbox = draw.textbbox((0, 0), preview, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((width - text_width) // 2, height//2 + 20), preview, fill='white', font=font)
+        line1 = " ".join(words[:4]) if words else "Vizzy AI"
+        line2 = " ".join(words[4:8]) if len(words) > 4 else "Image Generation"
         
-        # Draw small note
-        note = "(API temporarily unavailable)"
-        small_font = ImageFont.load_default()
-        bbox = draw.textbbox((0, 0), note, font=small_font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((width - text_width) // 2, height - 50), note, fill='white', font=small_font)
-    except:
-        pass
+        # Draw lines
+        bbox1 = draw.textbbox((0, 0), line1, font=font)
+        text_width1 = bbox1[2] - bbox1[0]
+        draw.text(((width - text_width1) // 2, height//2 - 30), line1, fill='white', font=font)
+        
+        bbox2 = draw.textbbox((0, 0), line2, font=font)
+        text_width2 = bbox2[2] - bbox2[0]
+        draw.text(((width - text_width2) // 2, height//2 + 10), line2, fill='white', font=font)
+        
+        # Add small logo
+        logo = "✨ vizzy.ai"
+        bbox_logo = draw.textbbox((0, 0), logo, font=font)
+        logo_width = bbox_logo[2] - bbox_logo[0]
+        draw.text(((width - logo_width) // 2, height - 40), logo, fill='white', font=font)
+        
+    except Exception as e:
+        logger.error(f"Text drawing failed: {e}")
     
     return img
-
-async def generate_images_fast(prompt: str, num_images: int = 2) -> List[Image.Image]:
-    """Generate multiple images in parallel"""
-    tasks = [generate_image_fast(f"{prompt} (variation {i+1})") for i in range(num_images)]
-    images = await asyncio.gather(*tasks)
-    return images
 
 # ==============================================
 # CONVERSATION STATE MANAGEMENT
@@ -533,7 +459,8 @@ async def generate_content(req):
         else:
             enhanced_prompt = f"{req.message}, {selected_style} style, {base_style}"
         
-        images = await generate_images_fast(enhanced_prompt, 2)
+        # Use Hugging Face for generation
+        images = await generate_with_hf(enhanced_prompt, 2)
         encoded_images = encode_images(images)
         
         reasoning = generate_dynamic_reasoning(req.message, mood, mode)
@@ -565,7 +492,8 @@ async def generate_content(req):
         
         enhanced_prompt = f"{selected_type} poster background, {req.message}, {mood} atmosphere, no text"
         
-        images = await generate_images_fast(enhanced_prompt, 2)
+        # Use Hugging Face for generation
+        images = await generate_with_hf(enhanced_prompt, 2)
         encoded_images = encode_images(images)
         
         reasoning = generate_dynamic_reasoning(req.message, mood, mode)
@@ -601,7 +529,8 @@ async def generate_content(req):
         
         for i, scene in enumerate(scenes):
             scene_prompt = f"{scene}, {selected_style}, {mood} atmosphere"
-            img_list = await generate_images_fast(scene_prompt, 1)
+            # Use Hugging Face for each scene
+            img_list = await generate_with_hf(scene_prompt, 1)
             if img_list:
                 scene_images.append(img_list[0])
         
@@ -634,7 +563,8 @@ async def generate_content(req):
         
         enhanced_prompt = f"{req.message}, transformed into {target_style} style, {mood} atmosphere"
         
-        images = await generate_images_fast(enhanced_prompt, 2)
+        # Use Hugging Face for generation
+        images = await generate_with_hf(enhanced_prompt, 2)
         encoded_images = encode_images(images)
         reasoning = generate_dynamic_reasoning(req.message, mood, mode)
         
@@ -663,7 +593,8 @@ async def generate_content(req):
         
         enhanced_prompt = f"{req.message}, {selected_style} business visual, professional, {mood} atmosphere"
         
-        images = await generate_images_fast(enhanced_prompt, 2)
+        # Use Hugging Face for generation
+        images = await generate_with_hf(enhanced_prompt, 2)
         encoded_images = encode_images(images)
         reasoning = generate_dynamic_reasoning(req.message, mood, mode)
         
@@ -689,7 +620,8 @@ async def generate_content(req):
     else:
         enhanced_prompt = f"{req.message}, {context_prompt}, {base_style}"
         
-        images = await generate_images_fast(enhanced_prompt, 2)
+        # Use Hugging Face for generation
+        images = await generate_with_hf(enhanced_prompt, 2)
         encoded_images = encode_images(images)
         reasoning = generate_dynamic_reasoning(req.message, mood, mode)
         
@@ -737,15 +669,15 @@ async def root():
         "service": "Vizzy Chat API",
         "version": "1.0.0",
         "status": "operational",
-        "model": "Multi-API (Fast & Reliable)",
-        "note": "Uses multiple free APIs with fallback"
+        "model": "Hugging Face Stable Diffusion",
+        "hf_url": HF_API_URL
     }
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "apis_available": len(FAST_APIS),
+        "hf_configured": HF_API_URL != "https://Dvbydt-vizzy-chat-api.hf.space/generate",
         "timestamp": time.time()
     }
 
@@ -823,7 +755,7 @@ async def chat(req: ChatRequest):
                 "content": {"text": f"Generation failed: {str(e)}"}
             }
         )
-    
+
 @app.get("/test-deepai")
 async def test_deepai():
     """Test DeepAI API directly"""
